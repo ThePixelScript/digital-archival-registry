@@ -1,0 +1,69 @@
+# ==============================================================================
+# Digital Archival Registry & Museum Collection Tracker
+# Local Development Infrastructure: Elasticsearch 8.x Single-Node Cluster
+# ==============================================================================
+# Security & Networking Rationale:
+# 1. Pinned Image: docker.elastic.co/elasticsearch/elasticsearch:8.17.2
+#    Ensures reproducible builds and avoids breaking changes from floating tags.
+# 2. Local Loopback Binding: "127.0.0.1:9200:9200"
+#    Prevents exposure on public network interfaces (0.0.0.0) while keeping the
+#    cluster accessible to the local host and backend services.
+# 3. Development Security Configuration:
+#    - xpack.security.enabled=true enforces HTTP Basic Authentication (user: elastic).
+#    - xpack.security.http.ssl.enabled=false is used intentionally for local dev
+#      to bypass self-signed CA certificate management in local client scripts,
+#      while preserving strict credential protection. Production deployments must
+#      enable TLS (xpack.security.http.ssl.enabled=true) with valid certificates.
+# ==============================================================================
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.2
+    container_name: museum-elasticsearch
+    environment:
+      - node.name=es01
+      - cluster.name=museum-archive-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-dev_archival_registry_password_replace_in_env}
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    ports:
+      # Bind strictly to localhost loopback to prevent external network exposure
+      - "127.0.0.1:9200:9200"
+    volumes:
+      # Named volume for persistent archival data across container restarts
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - museum_net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -f -u elastic:$${ELASTIC_PASSWORD:-dev_archival_registry_password_replace_in_env} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  es_data:
+    driver: local
+
+networks:
+  museum_net:
+    driver: bridge

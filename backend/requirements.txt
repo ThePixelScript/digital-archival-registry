@@ -1,0 +1,23 @@
+# ==============================================================================
+# Backend Dependencies: FastAPI, Elasticsearch Client, Validation, and Testing
+# Pinned versions compatible with Python 3.14 / 3.13 / 3.12
+# ==============================================================================
+
+# Core Web Framework and ASGI Server
+fastapi==0.143.0
+uvicorn[standard]==0.54.0
+
+# Official Elasticsearch 8.x Python Client (matches cluster version 8.17.x)
+elasticsearch==8.17.1
+
+# Data Validation and Settings Management
+pydantic==2.14.0
+pydantic-settings==2.15.0
+python-dotenv==1.2.4
+
+# HTTP Client (for tests and external calls)
+httpx==0.28.1
+
+# Testing Frameworks
+pytest==9.1.1
+pytest-asyncio==1.4.0

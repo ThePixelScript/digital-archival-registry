@@ -1,0 +1,153 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "archival_text_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "english_possessive_stemmer",
+            "english_stop",
+            "english_stemmer"
+          ]
+        }
+      },
+      "filter": {
+        "english_possessive_stemmer": {
+          "type": "stemmer",
+          "language": "possessive_english"
+        },
+        "english_stop": {
+          "type": "stop",
+          "stopwords": "_english_"
+        },
+        "english_stemmer": {
+          "type": "stemmer",
+          "language": "english"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "artifact_id": {
+        "type": "keyword"
+      },
+      "accession_number": {
+        "type": "keyword"
+      },
+      "name": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "alternate_names": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "category": {
+        "type": "keyword"
+      },
+      "historical_period": {
+        "type": "keyword"
+      },
+      "origin_culture": {
+        "type": "keyword"
+      },
+      "origin_location": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "creation_year_earliest": {
+        "type": "integer"
+      },
+      "creation_year_latest": {
+        "type": "integer"
+      },
+      "medium_materials": {
+        "type": "keyword"
+      },
+      "dimensions": {
+        "properties": {
+          "height_cm": {
+            "type": "float"
+          },
+          "width_cm": {
+            "type": "float"
+          },
+          "depth_cm": {
+            "type": "float"
+          },
+          "weight_kg": {
+            "type": "float"
+          }
+        }
+      },
+      "condition": {
+        "type": "keyword"
+      },
+      "is_on_display": {
+        "type": "boolean"
+      },
+      "storage_location": {
+        "type": "keyword"
+      },
+      "estimated_value_usd": {
+        "type": "double"
+      },
+      "acquisition_date": {
+        "type": "date",
+        "format": "strict_date_optional_time||yyyy-MM-dd"
+      },
+      "acquisition_method": {
+        "type": "keyword"
+      },
+      "description": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer"
+      },
+      "historical_context": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer"
+      },
+      "provenance": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer"
+      },
+      "restoration_notes": {
+        "type": "text",
+        "analyzer": "archival_text_analyzer"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "created_at": {
+        "type": "date"
+      },
+      "updated_at": {
+        "type": "date"
+      }
+    }
+  }
+}

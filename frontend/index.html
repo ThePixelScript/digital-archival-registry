@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Digital Archival Registry & Museum Collection Tracker - Search, explore, and manage museum artifacts powered by Elasticsearch 8.x and FastAPI.">
+  <title>Digital Archival Registry & Museum Collection Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Accessible Skip Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Global Application Header -->
+  <header class="app-header" role="banner">
+    <div class="header-container">
+      <div class="brand">
+        <h1 class="app-title">Digital Archival Registry</h1>
+        <p class="app-subtitle">Museum Collection Tracker & Exploration Engine</p>
+        <p class="demo-badge-text"><span aria-hidden="true">&#9432;</span> Demonstration collection: records are fictional and intended for software testing and demonstration.</p>
+      </div>
+
+      <div class="header-actions">
+        <!-- Live System & Elasticsearch Status -->
+        <div class="system-status" id="system-status" aria-live="polite" title="Elasticsearch Connection Status">
+          <span class="status-indicator" id="status-indicator" aria-hidden="true"></span>
+          <span class="status-label" id="status-label">Checking cluster status...</span>
+        </div>
+
+        <!-- Header Action Controls -->
+        <div class="header-buttons">
+          <button type="button" id="btn-toggle-analytics" class="btn btn-secondary" aria-expanded="false" aria-controls="analytics-panel">
+            <span class="btn-icon" aria-hidden="true">&#9638;</span>
+            <span id="analytics-toggle-text">Collection Analytics</span>
+          </button>
+          <button type="button" id="btn-open-create" class="btn btn-primary">
+            <span class="btn-icon" aria-hidden="true">&#43;</span>
+            <span>Register Artifact</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Collapsible Analytics & Collection Overview Dashboard -->
+  <section id="analytics-panel" class="analytics-panel" aria-label="Collection Statistics and Facet Analytics" hidden>
+    <div class="panel-container">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Archival Collection Analytics</h2>
+          <p class="panel-subtitle">Aggregated metrics computed directly from the Elasticsearch inverted index</p>
+        </div>
+        <button type="button" id="btn-close-analytics" class="btn-icon-close" aria-label="Close analytics panel">&times;</button>
+      </div>
+
+      <!-- High-level Metric Cards -->
+      <div class="metrics-grid" id="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-label">Total Cataloged Artifacts</span>
+          <span class="metric-value" id="stat-total-count">-</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Total Collection Valuation</span>
+          <span class="metric-value" id="stat-total-valuation">-</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Average Artifact Valuation</span>
+          <span class="metric-value" id="stat-avg-valuation">-</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">Valuation Range</span>
+          <span class="metric-value metric-sub" id="stat-valuation-range">-</span>
+        </div>
+      </div>
+
+      <!-- Aggregation Breakdown Tables with CSS Bar Visualizers -->
+      <div class="analytics-breakdowns">
+        <div class="breakdown-card">
+          <h3 class="breakdown-title">Category Distribution</h3>
+          <div class="table-scroll-wrapper">
+            <table class="stat-table" id="table-categories" aria-label="Artifact Category Distribution">
+              <thead>
+                <tr>
+                  <th scope="col">Category</th>
+                  <th scope="col" class="num-col">Count</th>
+                  <th scope="col" class="bar-col">Share</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-categories">
+                <tr><td colspan="3" class="text-muted">Loading category aggregation...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="breakdown-card">
+          <h3 class="breakdown-title">Historical Period Breakdown</h3>
+          <div class="table-scroll-wrapper">
+            <table class="stat-table" id="table-periods" aria-label="Artifacts by Historical Era">
+              <thead>
+                <tr>
+                  <th scope="col">Period</th>
+                  <th scope="col" class="num-col">Count</th>
+                  <th scope="col" class="bar-col">Share</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-periods">
+                <tr><td colspan="3" class="text-muted">Loading period aggregation...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="breakdown-card">
+          <h3 class="breakdown-title">Conservation Condition</h3>
+          <div class="table-scroll-wrapper">
+            <table class="stat-table" id="table-conditions" aria-label="Artifact Conservation Condition Ratings">
+              <thead>
+                <tr>
+                  <th scope="col">Condition</th>
+                  <th scope="col" class="num-col">Count</th>
+                  <th scope="col" class="bar-col">Share</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-conditions">
+                <tr><td colspan="3" class="text-muted">Loading condition aggregation...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Exploration & Registry Content -->
+  <main class="app-main" id="main-content">
+    <!-- Search Query Bar & Search Modifiers -->
+    <section class="search-panel" aria-label="Archival Search Controls">
+      <form id="search-form" class="search-form" role="search">
+        <div class="search-input-group">
+          <label for="search-input" class="sr-only">Search archival artifacts</label>
+          <div class="search-field-wrapper">
+            <span class="search-icon" aria-hidden="true">&#128269;</span>
+            <input
+              type="search"
+              id="search-input"
+              class="search-input"
+              placeholder="Search by artifact name, materials, culture, provenance, historical context..."
+              autocomplete="off"
+            />
+            <button type="button" id="search-clear-btn" class="search-clear-btn" aria-label="Clear search input" hidden>&times;</button>
+          </div>
+          <button type="submit" id="search-submit-btn" class="btn btn-primary search-submit-btn">Search Archive</button>
+        </div>
+
+        <div class="search-options-row">
+          <label class="toggle-checkbox" for="fuzzy-toggle">
+            <input type="checkbox" id="fuzzy-toggle" />
+            <span class="checkbox-custom" aria-hidden="true"></span>
+            <span class="checkbox-text">Enable typo-tolerant fuzzy matching (Levenshtein distance)</span>
+          </label>
+          <div id="active-filters-chips" class="active-filters-chips" aria-label="Currently applied filters"></div>
+        </div>
+      </form>
+    </section>
+
+    <!-- Two-Column Workspace Layout: Sidebar Facets + Results Grid -->
+    <div class="layout-grid">
+      <!-- Facets and Sorting Sidebar -->
+      <aside class="facets-sidebar" aria-label="Refine Collection Filters">
+        <div class="sidebar-header">
+          <h2 class="sidebar-title">Refine Collection</h2>
+          <button type="button" id="btn-reset-filters" class="btn-link" title="Clear all search filters and reset query">Reset All</button>
+        </div>
+
+        <form id="filters-form" class="filters-form">
+          <!-- Category Filter -->
+          <div class="filter-group">
+            <label for="filter-category" class="filter-label">Artifact Category</label>
+            <select id="filter-category" class="filter-select">
+              <option value="">All Categories</option>
+            </select>
+          </div>
+
+          <!-- Historical Period Filter -->
+          <div class="filter-group">
+            <label for="filter-period" class="filter-label">Historical Period</label>
+            <select id="filter-period" class="filter-select">
+              <option value="">All Periods</option>
+            </select>
+          </div>
+
+          <!-- Conservation Condition Filter -->
+          <div class="filter-group">
+            <label for="filter-condition" class="filter-label">Conservation Condition</label>
+            <select id="filter-condition" class="filter-select">
+              <option value="">All Conditions</option>
+            </select>
+          </div>
+
+          <!-- Gallery Display Status Filter -->
+          <div class="filter-group">
+            <label for="filter-display" class="filter-label">Display Status</label>
+            <select id="filter-display" class="filter-select">
+              <option value="">All Display Locations</option>
+              <option value="true">On Active Gallery Display</option>
+              <option value="false">In Vault Storage / Conservation</option>
+            </select>
+          </div>
+
+          <!-- Sorting Field -->
+          <div class="filter-group">
+            <label for="filter-sort-by" class="filter-label">Sort Records By</label>
+            <select id="filter-sort-by" class="filter-select">
+              <option value="">Relevance / Earliest Year</option>
+              <option value="creation_year_earliest">Creation Year (Earliest)</option>
+              <option value="estimated_value_usd">Estimated Valuation (USD)</option>
+              <option value="acquisition_date">Acquisition Date</option>
+              <option value="name">Artifact Name (A-Z)</option>
+              <option value="created_at">Date Added to Archive</option>
+            </select>
+          </div>
+
+          <!-- Sorting Direction -->
+          <div class="filter-group">
+            <label for="filter-sort-order" class="filter-label">Sort Order</label>
+            <select id="filter-sort-order" class="filter-select">
+              <option value="asc">Ascending (Low to High / A-Z)</option>
+              <option value="desc">Descending (High to Low / Z-A)</option>
+            </select>
+          </div>
+        </form>
+      </aside>
+
+      <!-- Results Viewport -->
+      <section class="results-viewport" aria-label="Archival Records Catalog">
+        <!-- Demonstration Collection Notice -->
+        <div class="demo-notice-banner" role="note" aria-label="Demonstration Notice">
+          <span class="demo-notice-icon" aria-hidden="true">&#9432;</span>
+          <span class="demo-notice-text"><strong>Demonstration collection:</strong> records are fictional and intended for software testing and demonstration. Provenance chains and conservation records are synthetic.</span>
+        </div>
+
+        <!-- Results Header Controls -->
+        <div class="results-header">
+          <div class="results-meta">
+            <span id="results-count" class="results-count" aria-live="polite">Querying repository...</span>
+            <span id="results-took" class="results-took"></span>
+          </div>
+
+          <div class="results-controls">
+            <label for="page-size-select" class="page-size-label">Per page:</label>
+            <select id="page-size-select" class="page-size-select" aria-label="Items per page">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Global Status Messages: Loading, Error, Empty State -->
+        <div id="loading-indicator" class="status-state loading-state" role="status" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="status-text">Searching archival index and ranking matches...</p>
+        </div>
+
+        <div id="error-banner" class="status-state error-banner" role="alert" hidden>
+          <div class="error-content">
+            <span class="error-icon" aria-hidden="true">&#9888;</span>
+            <div class="error-texts">
+              <strong class="error-heading">Communication Failure</strong>
+              <p id="error-message" class="error-message">Unable to connect to the archival API service.</p>
+            </div>
+          </div>
+          <button type="button" id="btn-retry-search" class="btn btn-secondary">Retry</button>
+        </div>
+
+        <div id="empty-state" class="status-state empty-state" hidden>
+          <div class="empty-icon" aria-hidden="true">&#128220;</div>
+          <h3 class="empty-title">No Matching Artifacts Found</h3>
+          <p class="empty-description">No archival records matched your current query and filter criteria. Try broadening search terms or resetting filters.</p>
+          <button type="button" id="btn-empty-reset" class="btn btn-secondary">Clear Filters & Query</button>
+        </div>
+
+        <!-- Dynamic Artifacts Cards Grid -->
+        <div id="artifacts-grid" class="artifacts-grid">
+          <!-- Dynamically populated by app.js -->
+        </div>
+
+        <!-- Pagination Controls Bar -->
+        <nav id="pagination-container" class="pagination-container" aria-label="Artifact catalog pagination" hidden>
+          <button type="button" id="btn-prev-page" class="btn btn-secondary pagination-btn" disabled>&larr; Previous</button>
+          <span id="pagination-info" class="pagination-info" aria-live="polite">Page 1 of 1</span>
+          <button type="button" id="btn-next-page" class="btn btn-secondary pagination-btn" disabled>Next &rarr;</button>
+        </nav>
+      </section>
+    </div>
+  </main>
+
+  <!-- Global Footer -->
+  <footer class="app-footer" role="contentinfo">
+    <div class="footer-container">
+      <p class="footer-brand">Digital Archival Registry & Museum Collection Tracker</p>
+      <p class="footer-meta">Demonstration collection &bull; Records are fictional and intended for software testing and demonstration.</p>
+      <p class="footer-meta">Powered by Elasticsearch 8.17, FastAPI REST Services, and Vanilla JavaScript</p>
+    </div>
+  </footer>
+
+  <!-- =========================================================================
+       MODAL 1: Artifact Detail Inspection Dialog (All 25 Mapped Fields)
+       ========================================================================= -->
+  <div id="detail-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
+    <div class="modal-dialog modal-lg">
+      <header class="modal-header">
+        <div class="modal-header-info">
+          <span id="detail-accession" class="badge badge-accession">ARC-0000-000</span>
+          <h2 id="detail-title" class="modal-title">Artifact Title</h2>
+          <p id="detail-alternate" class="modal-subtitle"></p>
+        </div>
+        <button type="button" id="btn-close-detail" class="btn-icon-close" aria-label="Close artifact details dialog">&times;</button>
+      </header>
+
+      <div class="modal-body" id="detail-body">
+        <!-- Badges row -->
+        <div class="detail-badges-row">
+          <span id="detail-badge-display" class="badge">Display Status</span>
+          <span id="detail-badge-condition" class="badge">Condition</span>
+          <span id="detail-badge-category" class="badge badge-category">Category</span>
+          <span id="detail-badge-period" class="badge badge-period">Period</span>
+        </div>
+
+        <!-- Details Grid Sections -->
+        <div class="detail-sections-grid">
+          <!-- Section 1: Chronology & Cultural Provenance -->
+          <section class="detail-section" aria-labelledby="sec-origin-heading">
+            <h3 id="sec-origin-heading" class="section-heading">Chronology & Cultural Provenance</h3>
+            <dl class="detail-dl">
+              <div class="dl-row">
+                <dt>Origin Culture:</dt>
+                <dd id="detail-origin-culture">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Origin Location:</dt>
+                <dd id="detail-origin-location">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Creation Timeline:</dt>
+                <dd id="detail-creation-years">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Storage Location:</dt>
+                <dd id="detail-storage-location">-</dd>
+              </div>
+            </dl>
+          </section>
+
+          <!-- Section 2: Physical Specifications & Valuation -->
+          <section class="detail-section" aria-labelledby="sec-physical-heading">
+            <h3 id="sec-physical-heading" class="section-heading">Physical Specifications & Valuation</h3>
+            <dl class="detail-dl">
+              <div class="dl-row">
+                <dt>Medium / Materials:</dt>
+                <dd id="detail-materials">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Dimensions (H &times; W &times; D):</dt>
+                <dd id="detail-dimensions">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Weight / Mass:</dt>
+                <dd id="detail-weight">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Estimated Value (USD):</dt>
+                <dd id="detail-valuation" class="valuation-highlight">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Acquisition Method:</dt>
+                <dd id="detail-acquisition-method">-</dd>
+              </div>
+              <div class="dl-row">
+                <dt>Acquisition Date:</dt>
+                <dd id="detail-acquisition-date">-</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+
+        <!-- Curatorial Full-Text Records -->
+        <div class="detail-text-blocks">
+          <section class="detail-block" aria-labelledby="sec-desc-heading">
+            <h3 id="sec-desc-heading" class="section-heading">Physical Description</h3>
+            <p id="detail-description" class="curatorial-text">-</p>
+          </section>
+
+          <section class="detail-block" aria-labelledby="sec-context-heading">
+            <h3 id="sec-context-heading" class="section-heading">Historical Context</h3>
+            <p id="detail-historical-context" class="curatorial-text">-</p>
+          </section>
+
+          <section class="detail-block" aria-labelledby="sec-prov-heading">
+            <h3 id="sec-prov-heading" class="section-heading">Recorded Provenance & Ownership Chain</h3>
+            <p id="detail-provenance" class="curatorial-text">-</p>
+          </section>
+
+          <section class="detail-block" aria-labelledby="sec-resto-heading">
+            <h3 id="sec-resto-heading" class="section-heading">Conservation & Restoration Notes</h3>
+            <p id="detail-restoration-notes" class="curatorial-text">-</p>
+          </section>
+        </div>
+
+        <!-- Curatorial Taxonomy Tags -->
+        <section class="detail-tags-section" aria-labelledby="detail-tags-heading">
+          <h3 id="detail-tags-heading" class="detail-tags-heading">Curatorial Taxonomy Tags</h3>
+          <div id="detail-tags-list" class="tags-container" aria-label="Archival taxonomy tags"></div>
+        </section>
+
+        <!-- Document Audit Identifiers -->
+        <div class="detail-footer-meta">
+          <div class="system-audit-group">
+            <span class="audit-item">Document ID: <code id="detail-doc-id">-</code></span>
+            <span class="audit-item">Added: <span id="detail-created-at">-</span></span>
+            <span class="audit-item">Last Updated: <span id="detail-updated-at">-</span></span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" id="btn-detail-edit" class="btn btn-secondary">Edit Artifact Record</button>
+        <button type="button" id="btn-detail-close-footer" class="btn btn-primary">Close Inspection</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 2: Artifact Registration & Edit Form Dialog
+       ========================================================================= -->
+  <div id="form-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="form-modal-title" hidden>
+    <div class="modal-dialog modal-lg">
+      <header class="modal-header">
+        <div>
+          <h2 id="form-modal-title" class="modal-title">Register New Artifact</h2>
+          <p id="form-modal-subtitle" class="modal-subtitle">Submit artifact record to the Elasticsearch collection index</p>
+        </div>
+        <button type="button" id="btn-close-form" class="btn-icon-close" aria-label="Close artifact editor dialog">&times;</button>
+      </header>
+
+      <form id="artifact-form" class="artifact-form" novalidate>
+        <input type="hidden" id="form-mode" value="create" />
+
+        <!-- Form Inline Error Banner -->
+        <div id="form-error-alert" class="form-error-alert" role="alert" hidden>
+          <span class="error-icon" aria-hidden="true">&#9888;</span>
+          <span id="form-error-text">Please review the highlighted validation errors below.</span>
+        </div>
+
+        <div class="modal-body form-body">
+          <!-- Identifiers Row -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="form-artifact-id" class="form-label required">Document Identifier (ID)</label>
+              <input type="text" id="form-artifact-id" class="form-input" placeholder="e.g. art-031" required maxlength="64" />
+              <small class="form-hint">Unique Elasticsearch document ID. Read-only once created.</small>
+            </div>
+            <div class="form-group">
+              <label for="form-accession-number" class="form-label required">Accession Number</label>
+              <input type="text" id="form-accession-number" class="form-input" placeholder="e.g. ARC-2024-031" required maxlength="64" />
+              <small class="form-hint">Official museum archival catalog designation.</small>
+            </div>
+          </div>
+
+          <!-- Primary Designation Row -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="form-name" class="form-label required">Artifact Title / Name</label>
+              <input type="text" id="form-name" class="form-input" placeholder="Primary object title" required maxlength="256" />
+            </div>
+            <div class="form-group">
+              <label for="form-alternate-names" class="form-label">Alternate / Historical Designations</label>
+              <input type="text" id="form-alternate-names" class="form-input" placeholder="Optional alternative titles" maxlength="256" />
+            </div>
+          </div>
+
+          <!-- Classification & Era -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="form-category" class="form-label required">Archival Category</label>
+              <select id="form-category" class="form-select" required>
+                <option value="">Select Category...</option>
+                <option value="Architectural Artifacts">Architectural Artifacts</option>
+                <option value="Ceramics & Pottery">Ceramics & Pottery</option>
+                <option value="Jewelry & Regalia">Jewelry & Regalia</option>
+                <option value="Manuscripts & Rare Texts">Manuscripts & Rare Texts</option>
+                <option value="Metalwork & Arms">Metalwork & Arms</option>
+                <option value="Scientific Instruments">Scientific Instruments</option>
+                <option value="Sculpture">Sculpture</option>
+                <option value="Textiles & Costumes">Textiles & Costumes</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="form-period" class="form-label required">Historical Period</label>
+              <input type="text" id="form-period" class="form-input" list="period-suggestions" placeholder="e.g. Italian Renaissance, Classical Antiquity" required maxlength="100" />
+              <datalist id="period-suggestions">
+                <option value="Age of Enlightenment"></option>
+                <option value="Bronze Age"></option>
+                <option value="Classical Antiquity"></option>
+                <option value="Edo Period"></option>
+                <option value="Industrial Era"></option>
+                <option value="Islamic Golden Age"></option>
+                <option value="Italian Renaissance"></option>
+                <option value="Medieval Europe"></option>
+                <option value="Mesoamerican Classic"></option>
+                <option value="Tang Dynasty"></option>
+              </datalist>
+            </div>
+          </div>
+
+          <!-- Culture & Provenance Geographic Origin -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="form-origin-culture" class="form-label required">Origin Culture / Civilization</label>
+              <input type="text" id="form-origin-culture" class="form-input" placeholder="e.g. Florentine, Ancient Roman" required maxlength="100" />
+            </div>
+            <div class="form-group">
+              <label for="form-origin-location" class="form-label required">Geographic Origin Location</label>
+              <input type="text" id="form-origin-location" class="form-input" placeholder="e.g. Florence, Italy" required maxlength="256" />
+            </div>
+          </div>
+
+          <!-- Chronology Estimation -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label for="form-year-earliest" class="form-label required">Earliest Creation Year</label>
+              <input type="number" id="form-year-earliest" class="form-input" placeholder="e.g. 1495 (negative for BCE)" required min="-10000" max="2100" aria-describedby="form-year-hint" />
+              <small id="form-year-hint" class="form-hint">Use negative numbers for BCE (e.g., -1323 for 1323 BCE).</small>
+            </div>
+            <div class="form-group">
+              <label for="form-year-latest" class="form-label required">Latest Creation Year</label>
+              <input type="number" id="form-year-latest" class="form-input" placeholder="e.g. 1500 (negative for BCE)" required min="-10000" max="2100" />
+            </div>
+          </div>
+
+          <!-- Materials & Physical Measurements -->
+          <div class="form-group">
+            <label for="form-materials" class="form-label required">Medium / Materials (Comma-separated)</label>
+            <input type="text" id="form-materials" class="form-input" placeholder="e.g. Bronze, Gold Leaf, Lapis Lazuli" required />
+          </div>
+
+          <div class="form-row form-row-4">
+            <div class="form-group">
+              <label for="form-dim-height" class="form-label">Height (cm)</label>
+              <input type="number" id="form-dim-height" class="form-input" placeholder="cm" min="0" step="0.1" />
+            </div>
+            <div class="form-group">
+              <label for="form-dim-width" class="form-label">Width (cm)</label>
+              <input type="number" id="form-dim-width" class="form-input" placeholder="cm" min="0" step="0.1" />
+            </div>
+            <div class="form-group">
+              <label for="form-dim-depth" class="form-label">Depth (cm)</label>
+              <input type="number" id="form-dim-depth" class="form-input" placeholder="cm" min="0" step="0.1" />
+            </div>
+            <div class="form-group">
+              <label for="form-dim-weight" class="form-label">Weight (kg)</label>
+              <input type="number" id="form-dim-weight" class="form-input" placeholder="kg" min="0" step="0.01" />
+            </div>
+          </div>
+
+          <!-- Condition, Display, Storage -->
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label for="form-condition" class="form-label required">Conservation Condition</label>
+              <select id="form-condition" class="form-select" required>
+                <option value="">Select Condition...</option>
+                <option value="Pristine">Pristine</option>
+                <option value="Excellent">Excellent</option>
+                <option value="Good">Good</option>
+                <option value="Fair">Fair</option>
+                <option value="Fragile">Fragile</option>
+                <option value="Critical">Critical</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="form-storage" class="form-label required">Storage / Gallery Location</label>
+              <input type="text" id="form-storage" class="form-input" placeholder="e.g. Gallery A, Vitrine 4" required maxlength="256" />
+            </div>
+            <div class="form-group form-group-checkbox">
+              <label class="toggle-checkbox" for="form-display">
+                <input type="checkbox" id="form-display" checked />
+                <span class="checkbox-custom" aria-hidden="true"></span>
+                <span class="checkbox-text">On Active Gallery Display</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Valuation & Acquisition -->
+          <div class="form-row form-row-3">
+            <div class="form-group">
+              <label for="form-value" class="form-label required">Estimated Valuation (USD)</label>
+              <input type="number" id="form-value" class="form-input" placeholder="e.g. 750000" required min="0" step="0.01" />
+            </div>
+            <div class="form-group">
+              <label for="form-acq-date" class="form-label required">Acquisition Date</label>
+              <input type="date" id="form-acq-date" class="form-input" required />
+            </div>
+            <div class="form-group">
+              <label for="form-acq-method" class="form-label required">Acquisition Method</label>
+              <select id="form-acq-method" class="form-select" required>
+                <option value="">Select Method...</option>
+                <option value="Bequest">Bequest</option>
+                <option value="Donation">Donation</option>
+                <option value="Field Excavation">Field Excavation</option>
+                <option value="Purchase">Purchase</option>
+                <option value="Transfer">Transfer</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Curatorial Text Descriptions -->
+          <div class="form-group">
+            <label for="form-description" class="form-label required">Physical Description</label>
+            <textarea id="form-description" class="form-textarea" rows="3" placeholder="Detailed physical appearance, craftsmanship, and morphology..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="form-historical-context" class="form-label required">Historical Context</label>
+            <textarea id="form-historical-context" class="form-textarea" rows="3" placeholder="Archaeological context, cultural significance, and historical narrative..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="form-provenance" class="form-label required">Provenance & Custody History</label>
+            <textarea id="form-provenance" class="form-textarea" rows="2" placeholder="Recorded chain of ownership, discovery records, collectors..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="form-restoration-notes" class="form-label required">Restoration & Conservation Notes</label>
+            <textarea id="form-restoration-notes" class="form-textarea" rows="2" placeholder="Conservation treatments, stabilizing interventions, inspection history..." required></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="form-tags" class="form-label">Search & Taxonomy Tags (Comma-separated)</label>
+            <input type="text" id="form-tags" class="form-input" placeholder="e.g. ancient, gold, ceremony, royal" />
+          </div>
+        </div>
+
+        <footer class="modal-footer">
+          <button type="button" id="btn-cancel-form" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="btn-submit-form" class="btn btn-primary">Save Artifact Record</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 3: Permanent Deletion Confirmation Dialog
+       ========================================================================= -->
+  <div id="delete-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title" hidden>
+    <div class="modal-dialog modal-sm">
+      <header class="modal-header">
+        <h2 id="delete-modal-title" class="modal-title text-danger">Confirm Permanent Deletion</h2>
+        <button type="button" id="btn-close-delete" class="btn-icon-close" aria-label="Cancel deletion dialog">&times;</button>
+      </header>
+
+      <div class="modal-body">
+        <p class="modal-alert-text">
+          Are you sure you wish to delete this archival document permanently from Elasticsearch?
+        </p>
+        <div class="delete-target-card">
+          <span id="delete-target-accession" class="badge badge-accession">-</span>
+          <p id="delete-target-name" class="delete-target-title">-</p>
+          <small id="delete-target-id" class="text-muted">ID: -</small>
+        </div>
+        <p class="text-danger-small">
+          This operation permanently purges the record from the index and cannot be undone.
+        </p>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" id="btn-cancel-delete" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btn-confirm-delete" class="btn btn-danger">Delete Permanently</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Accessible Toast Feedback Notification -->
+  <div id="toast-notification" class="toast-notification" role="status" aria-live="assertive" hidden>
+    <span id="toast-message" class="toast-message">Notification</span>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
