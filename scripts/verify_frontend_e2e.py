@@ -2,6 +2,8 @@
 
 import sys
 from pathlib import Path
+import csv
+import io
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _BACKEND_DIR = _REPO_ROOT / "backend"
@@ -10,6 +12,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from fastapi.testclient import TestClient
 from app.main import app
+
 
 def main() -> None:
     print("=" * 70)
@@ -96,8 +99,42 @@ def main() -> None:
         assert item["category"] == "Ceramics & Pottery"
     print(f"   [PASS] Category filter 'Ceramics & Pottery' returned {cat_data['total']} strictly filtered items.")
 
-    # 5. Verify CRUD Cycle with Temporary Test Document
-    print("\n5. Verifying Temporary Artifact CRUD Lifecycle...")
+    # 5. Verify Streaming CSV Export
+    print("\n5. Verifying Streaming CSV Export...")
+    res_export = client.get("/api/artifacts/export")
+    assert res_export.status_code == 200, f"Export failed: {res_export.status_code}"
+    assert "text/csv; charset=utf-8" in res_export.headers.get("content-type", "")
+    assert 'attachment; filename="museum_artifacts_export_' in res_export.headers.get("content-disposition", "")
+    assert res_export.content.startswith(b"\xef\xbb\xbf"), "Missing UTF-8 BOM"
+
+    csv_text = res_export.content.decode("utf-8-sig")
+    csv_rows = list(csv.reader(io.StringIO(csv_text)))
+    assert len(csv_rows) == 31, f"Expected 31 rows (1 header + 30 items), got {len(csv_rows)}"
+    assert len(csv_rows[0]) == 28, f"Expected 28 CSV columns, got {len(csv_rows[0])}"
+    assert csv_rows[0][0] == "artifact_id"
+    assert "dimensions_height_cm" in csv_rows[0]
+    print(f"   [PASS] GET /api/artifacts/export returned 30 artifacts with 28 columns and UTF-8 BOM.")
+
+    # Filtered export
+    res_filtered_export = client.get("/api/artifacts/export?category=Ceramics%20%26%20Pottery")
+    assert res_filtered_export.status_code == 200
+    filtered_csv_rows = list(csv.reader(io.StringIO(res_filtered_export.content.decode("utf-8-sig"))))
+    category_idx = csv_rows[0].index("category")
+    assert len(filtered_csv_rows) == 7, f"Expected 7 rows (1 header + 6 items), got {len(filtered_csv_rows)}"
+    for row in filtered_csv_rows[1:]:
+        assert row[category_idx] == "Ceramics & Pottery"
+    print(f"   [PASS] Filtered CSV export returned {len(filtered_csv_rows) - 1} records strictly matching category.")
+
+    # Search export alias
+    res_search_export = client.get("/api/search/export?q=cuneiform")
+    assert res_search_export.status_code == 200
+    assert 'attachment; filename="museum_artifacts_search_' in res_search_export.headers.get("content-disposition", "")
+    search_csv_rows = list(csv.reader(io.StringIO(res_search_export.content.decode("utf-8-sig"))))
+    assert len(search_csv_rows) >= 2
+    print(f"   [PASS] Search CSV export (/api/search/export) returned {len(search_csv_rows) - 1} matching records.")
+
+    # 6. Verify CRUD Cycle with Temporary Test Document
+    print("\n6. Verifying Temporary Artifact CRUD Lifecycle...")
     test_id = "art-ui-verification-001"
     test_payload = {
         "artifact_id": test_id,
@@ -173,11 +210,11 @@ def main() -> None:
     assert res_notfound.status_code == 404
     print("   [PASS] Confirmed test document no longer exists (404 Not Found).")
 
-    # 6. Verify original dataset integrity
+    # 7. Verify original dataset integrity
     res_final_health = client.get("/api/health")
     final_docs = res_final_health.json()["elasticsearch"]["document_count"]
     assert final_docs == 30, f"Expected 30 documents, got {final_docs}"
-    print(f"\n6. Original dataset integrity confirmed: Exactly 30 artifacts preserved in index.")
+    print(f"\n7. Original dataset integrity confirmed: Exactly 30 artifacts preserved in index.")
     print("=" * 70)
     print("ALL FRONTEND ASSET & API VERIFICATION CHECKS PASSED SUCCESSFULLY!")
     print("=" * 70)

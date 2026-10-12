@@ -1,15 +1,13 @@
 """Pydantic data models for museum artifacts, queries, and responses."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Dimensions(BaseModel):
     """Physical dimensions and mass measurements of an archival artifact."""
-
     model_config = ConfigDict(extra="forbid")
-
     height_cm: Optional[float] = Field(default=None, ge=0, description="Height in centimeters")
     width_cm: Optional[float] = Field(default=None, ge=0, description="Width in centimeters")
     depth_cm: Optional[float] = Field(default=None, ge=0, description="Depth in centimeters")
@@ -18,9 +16,7 @@ class Dimensions(BaseModel):
 
 class ArtifactBase(BaseModel):
     """Base schema containing core artifact attributes matching Elasticsearch mapping."""
-
     model_config = ConfigDict(extra="forbid")
-
     name: str = Field(..., min_length=1, max_length=256, description="Primary title or designation of the artifact")
     alternate_names: Optional[str] = Field(default=None, max_length=256, description="Alternative or historical designations")
     category: str = Field(..., min_length=1, max_length=100, description="Standardized archival category")
@@ -56,16 +52,13 @@ class ArtifactBase(BaseModel):
 
 class ArtifactCreate(ArtifactBase):
     """Schema for registering a new artifact record."""
-
     artifact_id: str = Field(..., min_length=1, max_length=64, description="Unique system document identifier (e.g. art-031)")
     accession_number: str = Field(..., min_length=1, max_length=64, description="Official archival accession number (e.g. ARC-2024-031)")
 
 
 class ArtifactUpdate(BaseModel):
     """Schema for partial or full updates of an existing artifact."""
-
     model_config = ConfigDict(extra="forbid")
-
     name: Optional[str] = Field(default=None, min_length=1, max_length=256)
     alternate_names: Optional[str] = Field(default=None, max_length=256)
     category: Optional[str] = Field(default=None, min_length=1, max_length=100)
@@ -101,7 +94,6 @@ class ArtifactUpdate(BaseModel):
 
 class ArtifactResponse(ArtifactBase):
     """Response representation of an artifact stored in Elasticsearch."""
-
     artifact_id: str
     accession_number: str
     created_at: Optional[str] = None
@@ -110,13 +102,11 @@ class ArtifactResponse(ArtifactBase):
 
 class ArtifactSearchResult(ArtifactResponse):
     """Artifact record augmented with search relevance scoring metadata."""
-
     relevance_score: Optional[float] = Field(default=None, description="BM25 relevance score from Elasticsearch")
 
 
 class ArtifactListResponse(BaseModel):
     """Paginated list of artifacts."""
-
     items: List[ArtifactResponse]
     total: int
     page: int
@@ -126,7 +116,6 @@ class ArtifactListResponse(BaseModel):
 
 class SearchResponse(BaseModel):
     """Response schema for full-text and filtered search queries."""
-
     items: List[ArtifactSearchResult]
     total: int
     page: int
@@ -139,7 +128,6 @@ class SearchResponse(BaseModel):
 
 class CollectionStatsResponse(BaseModel):
     """Comprehensive statistical breakdown computed from Elasticsearch aggregations."""
-
     total_artifacts: int
     categories: Dict[str, int]
     historical_periods: Dict[str, int]
@@ -149,7 +137,6 @@ class CollectionStatsResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health status representation for monitoring service uptime."""
-
     status: str
     environment: str
     elasticsearch: Dict[str, Any]

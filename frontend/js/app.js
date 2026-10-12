@@ -250,6 +250,69 @@ async function deleteArtifactRecord(id) {
   });
 }
 
+async function exportCollectionCsv() {
+  const exportBtn = document.getElementById("btn-export-csv");
+  const labelEl = document.getElementById("export-btn-label");
+  const originalLabel = labelEl ? labelEl.textContent : "Export CSV";
+
+  try {
+    if (exportBtn) exportBtn.disabled = true;
+    if (labelEl) labelEl.textContent = "Exporting...";
+
+    const params = new URLSearchParams();
+    if (state.query && state.query.trim()) params.append("q", state.query.trim());
+    if (state.category) params.append("category", state.category);
+    if (state.period) params.append("historical_period", state.period);
+    if (state.condition) params.append("condition", state.condition);
+    if (state.displayStatus !== "") params.append("is_on_display", state.displayStatus);
+    if (state.sortBy) params.append("sort_by", state.sortBy);
+    if (state.sortOrder) params.append("sort_order", state.sortOrder);
+    if (state.fuzzy) params.append("fuzzy", "true");
+
+    const exportUrl = `${API_BASE_URL}/artifacts/export?${params.toString()}`;
+    const response = await fetch(exportUrl);
+
+    if (!response.ok) {
+      let errorMessage = `Export failed (HTTP ${response.status})`;
+      try {
+        const errData = await response.json();
+        if (errData && errData.detail) {
+          errorMessage = typeof errData.detail === "string" ? errData.detail : JSON.stringify(errData.detail);
+        }
+      } catch {
+        // Fallback to HTTP error
+      }
+      throw new Error(errorMessage);
+    }
+
+    const blob = await response.blob();
+    let filename = "museum_artifacts_export.csv";
+    const disposition = response.headers.get("content-disposition");
+    if (disposition && disposition.includes("filename=")) {
+      const match = disposition.match(/filename=["']?([^"';]+)["']?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+
+    showToast("Archival records exported successfully as CSV.", true);
+  } catch (err) {
+    showToast(`Failed to export CSV: ${err.message}`, false);
+  } finally {
+    if (exportBtn) exportBtn.disabled = false;
+    if (labelEl) labelEl.textContent = originalLabel;
+  }
+}
+
 // =============================================================================
 // 4. Rendering & UI Updates
 // =============================================================================
@@ -1282,6 +1345,12 @@ function attachEventListeners() {
     state.page = 1;
     executeSearch();
   });
+
+  // CSV Export Action
+  const exportBtn = document.getElementById("btn-export-csv");
+  if (exportBtn) {
+    exportBtn.addEventListener("click", exportCollectionCsv);
+  }
 
   // Analytics Toggle
   const toggleAnalyticsBtn = document.getElementById("btn-toggle-analytics");

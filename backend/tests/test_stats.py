@@ -13,13 +13,10 @@ def test_collection_stats_endpoint(client: TestClient) -> None:
     assert len(data["categories"]) >= 6
     assert "Sculpture" in data["categories"]
     assert "Ceramics & Pottery" in data["categories"]
-
     assert len(data["historical_periods"]) >= 8
     assert "Classical Antiquity" in data["historical_periods"]
-
     assert "Pristine" in data["conditions"]
     assert "Good" in data["conditions"]
-
     val = data["valuation"]
     assert val["count"] >= 30
     assert val["min"] > 0

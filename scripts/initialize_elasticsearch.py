@@ -11,7 +11,6 @@ Safe and idempotent to rerun:
 
 import base64
 import json
-import os
 import sys
 import urllib.error
 import urllib.request
@@ -241,13 +240,13 @@ def main() -> int:
 
     # 3. Seed Sample Data
     created, skipped, failed = seed_sample_data(client, index_name, sample_data_file)
-    print(f"[SUMMARY] Bulk indexing results:")
+    print("[SUMMARY] Bulk indexing results:")
     print(f"  - Newly indexed:  {created}")
     print(f"  - Already exists: {skipped}")
     print(f"  - Failures:       {failed}")
 
     if failed > 0:
-        print(f"[FAIL] One or more documents failed to index.")
+        print("[FAIL] One or more documents failed to index.")
         return 1
 
     # 4. Total Document Count Verification

@@ -122,6 +122,12 @@ Ensure the following tools are installed on your host machine:
 7. **Accessible, Zero-Build Frontend**:
    - Built entirely in semantic HTML5, CSS custom properties, and Vanilla JavaScript ES modules.
    - Strict WCAG AA contrast, keyboard accessibility (focus traps, Escape handlers, focus restoration), and live screen-reader regions.
+8. **Reliable CSV Export & Spreadsheet Security**:
+   - Dedicated streaming export endpoints (`GET /api/artifacts/export` and `GET /api/search/export`) utilizing the Elasticsearch Scroll API (`scroll=2m`) to export complete matching result sets beyond standard pagination limits (`max_result_window`).
+   - RFC 4180 compliant CSV formatting with UTF-8 BOM (`\ufeff`) for seamless character display in Microsoft Excel, Apple Numbers, and LibreOffice Calc.
+   - 28 stable, documented columns with nested physical dimensions flattened into explicit numeric fields (`dimensions_height_cm`, `dimensions_width_cm`, `dimensions_depth_cm`, `dimensions_weight_kg`).
+   - Active filter awareness: one-click CSV export directly from the UI header preserving active text queries, category/period/condition/display filters, and sorting.
+   - Formula injection mitigation (CWE-1236 / OWASP) neutralizing dangerous leading prefixes (`=`, `+`, `-`, `@`, `\t`, `\r`, `%`) on untrusted string fields while preserving genuine numeric and negative values.
 
 ---
 
@@ -154,7 +160,7 @@ Run the administrative initialization script to configure custom analyzers and i
 ```
 
 ### 4. Run Automated Test Suite
-Execute the 19 automated unit and integration tests covering API routing, search queries, CRUD operations, and frontend asset serving:
+Execute the 38 automated unit and integration tests covering API routing, search queries, CRUD operations, CSV export security, and frontend asset serving:
 ```powershell
 .\.venv\Scripts\pytest.exe backend/tests -q
 ```
@@ -177,7 +183,7 @@ python -m http.server 5500 --directory frontend
 ```
 
 ### 6. Run End-to-End Verification
-To verify static file serving, search queries, typo tolerance, aggregations, and the full CRUD lifecycle against the live cluster:
+To verify static file serving, search queries, typo tolerance, aggregations, streaming CSV export, and the full CRUD lifecycle against the live cluster:
 ```powershell
 .\.venv\Scripts\python.exe scripts/verify_frontend_e2e.py
 ```

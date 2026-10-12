@@ -3,9 +3,9 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from app.api.routes import api_router
 from app.core.config import settings
@@ -57,7 +57,7 @@ if _FRONTEND_DIR.is_dir():
 
 @app.get("/favicon.ico", include_in_schema=False)
 @app.get("/favicon.svg", include_in_schema=False)
-def favicon():
+def favicon() -> Response:
     """Serves the SVG favicon at root for browsers requesting /favicon.ico or /favicon.svg."""
     if _FAVICON_PATH.is_file():
         return FileResponse(_FAVICON_PATH, media_type="image/svg+xml")

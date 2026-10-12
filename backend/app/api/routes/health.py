@@ -17,7 +17,6 @@ def health_check(
     """Returns application status and Elasticsearch cluster connectivity metadata."""
     es_status = get_health_status(client)
     overall_status = "ok" if es_status.get("connected") else "degraded"
-
     return HealthResponse(
         status=overall_status,
         environment=settings.ENVIRONMENT,

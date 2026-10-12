@@ -49,11 +49,10 @@ services:
     networks:
       - museum_net
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -s -f -u elastic:$${ELASTIC_PASSWORD:-dev_archival_registry_password_replace_in_env} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s || exit 1"
-        ]
+      test: [
+        "CMD-SHELL",
+        "curl -s -f -u elastic:$${ELASTIC_PASSWORD:-dev_archival_registry_password_replace_in_env} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s || exit 1"
+      ]
       interval: 10s
       timeout: 5s
       retries: 10
