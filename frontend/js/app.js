@@ -37,7 +37,9 @@ const state = {
   statsData: null,
   categoriesList: [],
   periodsList: [],
-  conditionsList: []
+  conditionsList: [],
+  importFile: null,
+  importPreviewData: null
 };
 
 let debounceTimer = null;
@@ -1210,7 +1212,229 @@ async function handleConfirmDelete() {
 }
 
 // =============================================================================
-// 9. Event Listeners & Application Bootstrapping
+// 9. Two-Stage CSV Import Workflow (Preview, Validation, & Bulk Creation)
+// =============================================================================
+
+function openImportModal() {
+  state.importFile = null;
+  state.importPreviewData = null;
+
+  const fileInput = document.getElementById("import-file-input");
+  if (fileInput) fileInput.value = "";
+
+  const btnPreview = document.getElementById("btn-preview-import");
+  if (btnPreview) btnPreview.disabled = true;
+
+  const btnConfirm = document.getElementById("btn-confirm-import");
+  if (btnConfirm) {
+    btnConfirm.disabled = true;
+    btnConfirm.textContent = "Confirm & Import to Archive";
+  }
+
+  const loadingEl = document.getElementById("import-loading");
+  if (loadingEl) loadingEl.setAttribute("hidden", "true");
+
+  const resultsContainer = document.getElementById("import-results-container");
+  if (resultsContainer) resultsContainer.setAttribute("hidden", "true");
+
+  const errorsWrapper = document.getElementById("import-errors-wrapper");
+  if (errorsWrapper) errorsWrapper.setAttribute("hidden", "true");
+
+  const previewWrapper = document.getElementById("import-preview-wrapper");
+  if (previewWrapper) previewWrapper.setAttribute("hidden", "true");
+
+  const tbodyErrors = document.getElementById("tbody-import-errors");
+  if (tbodyErrors) tbodyErrors.replaceChildren();
+
+  const tbodyPreview = document.getElementById("tbody-import-preview");
+  if (tbodyPreview) tbodyPreview.replaceChildren();
+
+  openModal("import-modal");
+}
+
+function handleImportFileSelected(event) {
+  const file = event.target.files?.[0];
+  state.importFile = file || null;
+
+  const btnPreview = document.getElementById("btn-preview-import");
+  if (btnPreview) btnPreview.disabled = !file;
+
+  const btnConfirm = document.getElementById("btn-confirm-import");
+  if (btnConfirm) btnConfirm.disabled = true;
+
+  const resultsContainer = document.getElementById("import-results-container");
+  if (resultsContainer) resultsContainer.setAttribute("hidden", "true");
+}
+
+async function handlePreviewImport() {
+  if (!state.importFile) return;
+
+  const btnPreview = document.getElementById("btn-preview-import");
+  const btnConfirm = document.getElementById("btn-confirm-import");
+  const loadingEl = document.getElementById("import-loading");
+  const resultsContainer = document.getElementById("import-results-container");
+
+  btnPreview.disabled = true;
+  btnConfirm.disabled = true;
+  loadingEl.removeAttribute("hidden");
+  resultsContainer.setAttribute("hidden", "true");
+
+  try {
+    const formData = new FormData();
+    formData.append("file", state.importFile);
+
+    const response = await fetch(`${API_BASE_URL}/artifacts/import/preview`, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await response.json();
+    loadingEl.setAttribute("hidden", "true");
+
+    if (!response.ok) {
+      const msg = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+      throw new Error(msg || `Preview analysis failed (HTTP ${response.status})`);
+    }
+
+    state.importPreviewData = data;
+    renderImportPreview(data);
+    resultsContainer.removeAttribute("hidden");
+  } catch (err) {
+    loadingEl.setAttribute("hidden", "true");
+    showToast(`Validation preview error: ${err.message}`, false);
+  } finally {
+    btnPreview.disabled = false;
+  }
+}
+
+function renderImportPreview(data) {
+  document.getElementById("import-badge-total").textContent = String(data.total_rows || 0);
+  document.getElementById("import-badge-valid").textContent = String(data.valid_rows || 0);
+  document.getElementById("import-badge-error").textContent = String(data.error_rows || 0);
+  document.getElementById("import-badge-duplicates").textContent = String(data.duplicate_file_ids?.length || 0);
+  document.getElementById("import-badge-conflicts").textContent = String(data.existing_collection_ids?.length || 0);
+
+  const banner = document.getElementById("import-status-banner");
+  const icon = document.getElementById("import-status-icon");
+  const msg = document.getElementById("import-status-message");
+  const btnConfirm = document.getElementById("btn-confirm-import");
+
+  if (data.can_import) {
+    banner.className = "import-status-banner status-success";
+    icon.textContent = "✓";
+    msg.textContent = `All ${data.valid_rows} artifact records are valid and ready to be imported into the archival registry.`;
+    btnConfirm.disabled = false;
+  } else {
+    banner.className = "import-status-banner status-error";
+    icon.textContent = "⚠";
+    const errCount = data.errors?.length || 0;
+    const rowCount = data.error_rows || 0;
+    msg.textContent = `Found ${errCount} issue(s) across ${rowCount} row(s). All validation errors must be resolved in your CSV before importing.`;
+    btnConfirm.disabled = true;
+  }
+
+  const errorsWrapper = document.getElementById("import-errors-wrapper");
+  const tbodyErrors = document.getElementById("tbody-import-errors");
+  tbodyErrors.replaceChildren();
+
+  if (data.errors && data.errors.length > 0) {
+    document.getElementById("import-errors-count").textContent = String(data.errors.length);
+    errorsWrapper.removeAttribute("hidden");
+
+    for (const err of data.errors) {
+      const tr = el("tr");
+      tr.appendChild(el("td", { text: err.row_number > 0 ? `Row ${err.row_number}` : "System" }));
+      tr.appendChild(el("td", {}, el("code", { text: err.artifact_id || "—" })));
+      tr.appendChild(el("td", {}, el("code", { text: err.field || "general" })));
+      tr.appendChild(el("td", { className: "text-danger", text: err.message }));
+      tbodyErrors.appendChild(tr);
+    }
+  } else {
+    errorsWrapper.setAttribute("hidden", "true");
+  }
+
+  const previewWrapper = document.getElementById("import-preview-wrapper");
+  const tbodyPreview = document.getElementById("tbody-import-preview");
+  tbodyPreview.replaceChildren();
+
+  if (data.preview_records && data.preview_records.length > 0) {
+    document.getElementById("import-preview-count").textContent = String(data.preview_records.length);
+    previewWrapper.removeAttribute("hidden");
+
+    for (const rec of data.preview_records) {
+      const tr = el("tr");
+      tr.appendChild(el("td", {}, el("code", { text: rec.artifact_id })));
+      tr.appendChild(el("td", { text: rec.accession_number }));
+      tr.appendChild(el("td", { text: rec.name }));
+      tr.appendChild(el("td", { text: rec.category }));
+      tr.appendChild(el("td", { text: rec.historical_period }));
+      tr.appendChild(el("td", { className: "num-col", text: formatCurrency(rec.estimated_value_usd || 0) }));
+      const displayBadge = el("span", {
+        className: `badge ${rec.is_on_display ? "badge-display" : "badge-vault"}`,
+        text: rec.is_on_display ? "Display" : "Storage"
+      });
+      const tdDisp = el("td");
+      tdDisp.appendChild(displayBadge);
+      tr.appendChild(tdDisp);
+      tbodyPreview.appendChild(tr);
+    }
+  } else {
+    previewWrapper.setAttribute("hidden", "true");
+  }
+}
+
+async function handleConfirmImport() {
+  if (!state.importFile || !state.importPreviewData?.can_import) return;
+
+  const btnConfirm = document.getElementById("btn-confirm-import");
+  const btnCancel = document.getElementById("btn-cancel-import");
+  const originalConfirmText = btnConfirm.textContent;
+
+  btnConfirm.disabled = true;
+  btnCancel.disabled = true;
+  btnConfirm.textContent = "Importing Records...";
+
+  try {
+    const formData = new FormData();
+    formData.append("file", state.importFile);
+
+    const response = await fetch(`${API_BASE_URL}/artifacts/import`, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      let detailMsg = `Import failed (HTTP ${response.status})`;
+      if (data && data.detail) {
+        if (typeof data.detail === "string") {
+          detailMsg = data.detail;
+        } else if (data.detail.message) {
+          detailMsg = data.detail.message;
+        }
+      }
+      throw new Error(detailMsg);
+    }
+
+    showToast(`Successfully imported ${data.imported_count} artifact records into the collection!`);
+    closeModal("import-modal");
+
+    await executeSearch();
+    await fetchStats();
+    await checkSystemHealth();
+  } catch (err) {
+    showToast(`Import rejected: ${err.message}`, false);
+    await handlePreviewImport();
+  } finally {
+    btnConfirm.disabled = false;
+    btnCancel.disabled = false;
+    btnConfirm.textContent = originalConfirmText;
+  }
+}
+
+// =============================================================================
+// 10. Event Listeners & Application Bootstrapping
 // =============================================================================
 
 function attachEventListeners() {
@@ -1350,6 +1574,32 @@ function attachEventListeners() {
   const exportBtn = document.getElementById("btn-export-csv");
   if (exportBtn) {
     exportBtn.addEventListener("click", exportCollectionCsv);
+  }
+
+  // CSV Import Actions
+  const btnOpenImport = document.getElementById("btn-open-import");
+  if (btnOpenImport) {
+    btnOpenImport.addEventListener("click", openImportModal);
+  }
+  const btnCloseImport = document.getElementById("btn-close-import");
+  if (btnCloseImport) {
+    btnCloseImport.addEventListener("click", () => closeModal("import-modal"));
+  }
+  const btnCancelImport = document.getElementById("btn-cancel-import");
+  if (btnCancelImport) {
+    btnCancelImport.addEventListener("click", () => closeModal("import-modal"));
+  }
+  const importFileInput = document.getElementById("import-file-input");
+  if (importFileInput) {
+    importFileInput.addEventListener("change", handleImportFileSelected);
+  }
+  const btnPreviewImport = document.getElementById("btn-preview-import");
+  if (btnPreviewImport) {
+    btnPreviewImport.addEventListener("click", handlePreviewImport);
+  }
+  const btnConfirmImport = document.getElementById("btn-confirm-import");
+  if (btnConfirmImport) {
+    btnConfirmImport.addEventListener("click", handleConfirmImport);
   }
 
   // Analytics Toggle

@@ -51,6 +51,12 @@ def main() -> None:
     assert "Demonstration collection: records are fictional and intended for software testing and demonstration." in res.text
     print("   [PASS] Demonstration collection notice verified in frontend HTML")
 
+    assert 'id="btn-open-import"' in res.text
+    print("   [PASS] Import CSV button verified in frontend HTML")
+
+    assert 'id="import-modal"' in res.text
+    print("   [PASS] CSV Import dialog modal verified in frontend HTML")
+
     # 2. Verify Health
     print("\n2. Verifying Health Endpoint...")
     res_health = client.get("/api/health")
@@ -210,11 +216,48 @@ def main() -> None:
     assert res_notfound.status_code == 404
     print("   [PASS] Confirmed test document no longer exists (404 Not Found).")
 
-    # 7. Verify original dataset integrity
+    # 7. Verify Two-Stage CSV Import Workflow
+    print("\n7. Verifying Two-Stage CSV Import Workflow...")
+    imp_id = "art-e2e-imp-001"
+    client.delete(f"/api/artifacts/{imp_id}")
+
+    csv_header = "artifact_id,accession_number,name,alternate_names,category,historical_period,origin_culture,origin_location,creation_year_earliest,creation_year_latest,medium_materials,dimensions_height_cm,dimensions_width_cm,dimensions_depth_cm,dimensions_weight_kg,condition,is_on_display,storage_location,estimated_value_usd,acquisition_date,acquisition_method,description,historical_context,provenance,restoration_notes,tags,created_at,updated_at\r\n"
+    csv_data = f'{imp_id},ARC-E2E-001,"E2E Test Imported Bronze Mask",,"Sculpture","Classical Antiquity","Roman","Rome, Italy",100,150,"Bronze",22.0,18.0,12.0,1.8,"Excellent",true,"Vault B",250000.0,2024-04-01,"Donation","Curatorial description","Historical significance","Archaeological discovery","Consolidated","test, e2e, import",,\r\n'
+    import_bytes = (csv_header + csv_data).encode("utf-8")
+
+    # Preview
+    res_preview = client.post("/api/artifacts/import/preview", files={"file": ("e2e_import.csv", import_bytes, "text/csv")})
+    assert res_preview.status_code == 200, f"Preview failed: {res_preview.text}"
+    prev_data = res_preview.json()
+    assert prev_data["can_import"] is True
+    assert prev_data["valid_rows"] == 1
+    assert prev_data["error_rows"] == 0
+    print("   [PASS] POST /api/artifacts/import/preview dry-run validated CSV schema without database modification.")
+
+    # Confirm
+    res_confirm = client.post("/api/artifacts/import", files={"file": ("e2e_import.csv", import_bytes, "text/csv")})
+    assert res_confirm.status_code == 200, f"Confirm failed: {res_confirm.text}"
+    conf_data = res_confirm.json()
+    assert conf_data["success"] is True
+    assert conf_data["imported_count"] == 1
+    print("   [PASS] POST /api/artifacts/import successfully created artifact record from CSV.")
+
+    # Verify retrieval
+    res_imp_get = client.get(f"/api/artifacts/{imp_id}")
+    assert res_imp_get.status_code == 200
+    assert res_imp_get.json()["name"] == "E2E Test Imported Bronze Mask"
+    print("   [PASS] GET /api/artifacts/{id} confirmed imported artifact stored accurately.")
+
+    # Clean up imported record
+    res_imp_del = client.delete(f"/api/artifacts/{imp_id}")
+    assert res_imp_del.status_code == 204
+    print("   [PASS] Cleaned up temporary imported record.")
+
+    # 8. Verify original dataset integrity
     res_final_health = client.get("/api/health")
     final_docs = res_final_health.json()["elasticsearch"]["document_count"]
     assert final_docs == 30, f"Expected 30 documents, got {final_docs}"
-    print(f"\n7. Original dataset integrity confirmed: Exactly 30 artifacts preserved in index.")
+    print(f"\n8. Original dataset integrity confirmed: Exactly 30 artifacts preserved in index.")
     print("=" * 70)
     print("ALL FRONTEND ASSET & API VERIFICATION CHECKS PASSED SUCCESSFULLY!")
     print("=" * 70)

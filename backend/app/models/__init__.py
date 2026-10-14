@@ -7,6 +7,9 @@ from app.models.artifact import (
     ArtifactResponse,
     ArtifactSearchResult,
     ArtifactUpdate,
+    CSVImportPreviewResponse,
+    CSVImportResultResponse,
+    CSVRowError,
     CollectionStatsResponse,
     Dimensions,
     HealthResponse,
@@ -24,4 +27,7 @@ __all__ = [
     "SearchResponse",
     "CollectionStatsResponse",
     "HealthResponse",
+    "CSVRowError",
+    "CSVImportPreviewResponse",
+    "CSVImportResultResponse",
 ]

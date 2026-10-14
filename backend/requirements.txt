@@ -6,6 +6,7 @@
 # Core Web Framework and ASGI Server
 fastapi==0.143.0
 uvicorn[standard]==0.54.0
+python-multipart==0.0.32
 
 # Official Elasticsearch 8.x Python Client (matches cluster version 8.17.x)
 elasticsearch==8.17.1

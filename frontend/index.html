@@ -249,6 +249,10 @@
           </div>
 
           <div class="results-controls">
+            <button type="button" id="btn-open-import" class="btn btn-secondary btn-import-csv" title="Import archival records from CSV">
+              <span class="btn-icon" aria-hidden="true">&#128229;</span>
+              <span>Import CSV</span>
+            </button>
             <button type="button" id="btn-export-csv" class="btn btn-secondary btn-export-csv" title="Download matching archival records as CSV">
               <span class="btn-icon" aria-hidden="true">&#128196;</span>
               <span id="export-btn-label">Export CSV</span>
@@ -681,6 +685,121 @@
       <footer class="modal-footer">
         <button type="button" id="btn-cancel-delete" class="btn btn-secondary">Cancel</button>
         <button type="button" id="btn-confirm-delete" class="btn btn-danger">Delete Permanently</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 4: CSV Import Dialog (Two-stage Preview and Confirm)
+       ========================================================================= -->
+  <div id="import-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="import-modal-title" hidden>
+    <div class="modal-dialog modal-lg">
+      <header class="modal-header">
+        <div class="modal-header-info">
+          <h2 id="import-modal-title" class="modal-title">Import Records from CSV</h2>
+          <p class="modal-subtitle">Upload and validate artifact records in RFC 4180 CSV format (max 5 MB / 1,000 rows)</p>
+        </div>
+        <button type="button" id="btn-close-import" class="btn-icon-close" aria-label="Close import dialog">&times;</button>
+      </header>
+
+      <div class="modal-body" id="import-modal-body">
+        <!-- File selection section -->
+        <div class="import-file-section">
+          <label for="import-file-input" class="form-label required">Select CSV Spreadsheet</label>
+          <div class="import-file-controls">
+            <input type="file" id="import-file-input" class="form-input import-file-input" accept=".csv,text/csv" />
+            <button type="button" id="btn-preview-import" class="btn btn-secondary" disabled>
+              <span class="btn-icon" aria-hidden="true">&#128269;</span>
+              <span>Validate &amp; Preview</span>
+            </button>
+          </div>
+          <p class="form-hint">CSV must include the standard 28-column archival schema with UTF-8 or UTF-8 BOM encoding.</p>
+        </div>
+
+        <!-- Loading state for preview analysis -->
+        <div id="import-loading" class="status-state loading-state" role="status" hidden>
+          <div class="spinner" aria-hidden="true"></div>
+          <p class="status-text" id="import-loading-text">Validating CSV data against schema and collection records...</p>
+        </div>
+
+        <!-- Results feedback area (badges, error table, preview table) -->
+        <div id="import-results-container" class="import-results-container" hidden>
+          <!-- Badges summary row -->
+          <div class="import-summary-badges">
+            <div class="summary-badge summary-total">
+              <span class="badge-num" id="import-badge-total">0</span>
+              <span class="badge-text">Total Rows</span>
+            </div>
+            <div class="summary-badge summary-valid">
+              <span class="badge-num" id="import-badge-valid">0</span>
+              <span class="badge-text">Valid Records</span>
+            </div>
+            <div class="summary-badge summary-error">
+              <span class="badge-num" id="import-badge-error">0</span>
+              <span class="badge-text">Errors Found</span>
+            </div>
+            <div class="summary-badge summary-duplicates">
+              <span class="badge-num" id="import-badge-duplicates">0</span>
+              <span class="badge-text">File Duplicates</span>
+            </div>
+            <div class="summary-badge summary-conflicts">
+              <span class="badge-num" id="import-badge-conflicts">0</span>
+              <span class="badge-text">Archive Conflicts</span>
+            </div>
+          </div>
+
+          <!-- Status banner -->
+          <div id="import-status-banner" class="import-status-banner" role="alert">
+            <span id="import-status-icon" class="status-icon" aria-hidden="true"></span>
+            <span id="import-status-message" class="status-message"></span>
+          </div>
+
+          <!-- Row-level Errors Table -->
+          <div id="import-errors-wrapper" class="import-errors-wrapper" hidden>
+            <h3 class="import-section-heading text-danger">Validation &amp; Conflict Errors (<span id="import-errors-count">0</span>)</h3>
+            <div class="table-scroll-wrapper import-table-scroll">
+              <table class="stat-table import-error-table" aria-label="CSV Validation Errors">
+                <thead>
+                  <tr>
+                    <th scope="col" style="width: 70px;">Row #</th>
+                    <th scope="col" style="width: 110px;">Artifact ID</th>
+                    <th scope="col" style="width: 140px;">Field</th>
+                    <th scope="col">Error Description</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-import-errors">
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Valid Records Preview Table -->
+          <div id="import-preview-wrapper" class="import-preview-wrapper" hidden>
+            <h3 class="import-section-heading">Preview Parsed Records (<span id="import-preview-count">0</span> shown)</h3>
+            <div class="table-scroll-wrapper import-table-scroll">
+              <table class="stat-table import-preview-table" aria-label="Valid CSV Records Preview">
+                <thead>
+                  <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Accession #</th>
+                    <th scope="col">Artifact Name</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Period</th>
+                    <th scope="col" class="num-col">Valuation ($)</th>
+                    <th scope="col">Display</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-import-preview">
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" id="btn-cancel-import" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="btn-confirm-import" class="btn btn-primary" disabled>Confirm &amp; Import to Archive</button>
       </footer>
     </div>
   </div>

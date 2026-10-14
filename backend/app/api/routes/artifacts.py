@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 import math
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from elasticsearch import Elasticsearch
 from app.core.elasticsearch import get_elasticsearch_client
@@ -12,17 +12,24 @@ from app.models.artifact import (
     ArtifactListResponse,
     ArtifactResponse,
     ArtifactUpdate,
+    CSVImportPreviewResponse,
+    CSVImportResultResponse,
+    CSVRowError,
 )
 from app.services.artifact_service import (
+    CSV_IMPORT_PREVIEW_LIMIT,
+    MAX_IMPORT_FILE_SIZE_BYTES,
     ArtifactAlreadyExistsError,
     ArtifactNotFoundError,
     ElasticsearchServiceError,
     create_artifact,
     delete_artifact,
+    execute_csv_import,
     get_artifact_by_id,
     list_artifacts,
     stream_artifacts_csv,
     update_artifact,
+    validate_csv_import,
 )
 
 router = APIRouter(prefix="/artifacts", tags=["Artifacts"])
@@ -111,6 +118,98 @@ def export_artifacts_csv(
             media_type="text/csv; charset=utf-8",
             headers=headers,
         )
+    except ElasticsearchServiceError as ex:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(ex))
+
+
+@router.post(
+    "/import/preview",
+    response_model=CSVImportPreviewResponse,
+    summary="Preview and validate artifact CSV upload without writing to Elasticsearch",
+)
+async def preview_csv_import(
+    file: UploadFile = File(..., description="CSV file matching archival schema (RFC 4180)"),
+    client: Elasticsearch = Depends(get_elasticsearch_client),
+) -> CSVImportPreviewResponse:
+    """Performs dry-run validation of an uploaded CSV file.
+
+    Checks schema conformity, types, ranges, in-file duplicates, and conflicts
+    against current collection records in Elasticsearch without performing mutations.
+    """
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_IMPORT_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"Uploaded file exceeds the maximum size limit of {MAX_IMPORT_FILE_SIZE_BYTES // (1024 * 1024)} MB.",
+        )
+
+    try:
+        valid_records, errors, dup_file, dup_es, total_rows, error_rows = validate_csv_import(client, file_bytes)
+        can_import = (len(errors) == 0 and len(valid_records) > 0 and total_rows > 0)
+        return CSVImportPreviewResponse(
+            total_rows=total_rows,
+            valid_rows=len(valid_records),
+            error_rows=error_rows,
+            duplicate_file_ids=dup_file,
+            existing_collection_ids=dup_es,
+            errors=errors,
+            can_import=can_import,
+            preview_records=valid_records[:CSV_IMPORT_PREVIEW_LIMIT],
+        )
+    except ElasticsearchServiceError as ex:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(ex))
+
+
+@router.post(
+    "/import",
+    response_model=CSVImportResultResponse,
+    summary="Confirm and execute bulk import of artifact records into Elasticsearch",
+)
+async def confirm_csv_import(
+    file: UploadFile = File(..., description="CSV file previously validated in preview"),
+    client: Elasticsearch = Depends(get_elasticsearch_client),
+) -> CSVImportResultResponse:
+    """Executes bulk indexing of validated artifact records.
+
+    Revalidates the submitted file against Elasticsearch to detect any changes
+    since preview, then applies create-only bulk indexing (_op_type="create")
+    guaranteeing that existing records are never overwritten.
+    """
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_IMPORT_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"Uploaded file exceeds the maximum size limit of {MAX_IMPORT_FILE_SIZE_BYTES // (1024 * 1024)} MB.",
+        )
+
+    try:
+        success, imported_count, total_rows, imported_ids, msg, errors = execute_csv_import(client, file_bytes)
+        if not success:
+            status_code = (
+                status.HTTP_409_CONFLICT
+                if any("already exists" in e.message.lower() or "conflict" in e.message.lower() for e in errors)
+                else status.HTTP_400_BAD_REQUEST
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail={
+                    "message": msg,
+                    "total_rows": total_rows,
+                    "imported_count": imported_count,
+                    "errors": [e.model_dump() for e in errors],
+                },
+            )
+
+        return CSVImportResultResponse(
+            success=True,
+            imported_count=imported_count,
+            total_rows=total_rows,
+            imported_ids=imported_ids,
+            message=msg,
+            errors=[],
+        )
+    except HTTPException:
+        raise
     except ElasticsearchServiceError as ex:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(ex))
 

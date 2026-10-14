@@ -128,6 +128,10 @@ Ensure the following tools are installed on your host machine:
    - 28 stable, documented columns with nested physical dimensions flattened into explicit numeric fields (`dimensions_height_cm`, `dimensions_width_cm`, `dimensions_depth_cm`, `dimensions_weight_kg`).
    - Active filter awareness: one-click CSV export directly from the UI header preserving active text queries, category/period/condition/display filters, and sorting.
    - Formula injection mitigation (CWE-1236 / OWASP) neutralizing dangerous leading prefixes (`=`, `+`, `-`, `@`, `\t`, `\r`, `%`) on untrusted string fields while preserving genuine numeric and negative values.
+9. **Two-Stage Validated CSV Import Workflow**:
+   - Two-stage ingestion: Dry-run preview (`POST /api/artifacts/import/preview`) parses RFC 4180 / UTF-8 / BOM CSV uploads, maps 28 columns to `ArtifactCreate`, verifies data types/ranges/dates/dimensions, and flags in-file duplicates and Elasticsearch ID conflicts without mutating the collection.
+   - Explicit confirmation import (`POST /api/artifacts/import`) re-validates the submitted file against the live cluster to detect intervening changes, then executes create-only bulk indexing (`_op_type="create"`), guaranteeing existing records are never overwritten.
+   - Guardrails and safety limits: 5 MB file size limit, 1,000 maximum row limit, cell formula un-escaping, structured row-level error reporting, and accessible preview modal in the web interface.
 
 ---
 
@@ -160,7 +164,7 @@ Run the administrative initialization script to configure custom analyzers and i
 ```
 
 ### 4. Run Automated Test Suite
-Execute the 38 automated unit and integration tests covering API routing, search queries, CRUD operations, CSV export security, and frontend asset serving:
+Execute the 59 automated unit and integration tests covering API routing, search queries, CRUD operations, CSV export security, two-stage CSV import validation, and frontend asset serving:
 ```powershell
 .\.venv\Scripts\pytest.exe backend/tests -q
 ```

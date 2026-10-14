@@ -140,3 +140,33 @@ class HealthResponse(BaseModel):
     status: str
     environment: str
     elasticsearch: Dict[str, Any]
+
+
+class CSVRowError(BaseModel):
+    """Structured representation of a CSV import validation or conflict error."""
+    row_number: int = Field(..., description="1-indexed CSV line number (header is row 1)")
+    artifact_id: Optional[str] = Field(default=None, description="Artifact identifier if parsed")
+    field: Optional[str] = Field(default=None, description="Affected field name or column")
+    message: str = Field(..., description="Human-readable description of the error")
+
+
+class CSVImportPreviewResponse(BaseModel):
+    """Dry-run preview response summarizing CSV validation without writing to the database."""
+    total_rows: int = Field(..., description="Total data rows parsed from the CSV file")
+    valid_rows: int = Field(..., description="Number of rows passing all schema and conflict checks")
+    error_rows: int = Field(..., description="Number of rows with validation or duplicate errors")
+    duplicate_file_ids: List[str] = Field(default_factory=list, description="IDs duplicated within the CSV file itself")
+    existing_collection_ids: List[str] = Field(default_factory=list, description="IDs that already exist in Elasticsearch")
+    errors: List[CSVRowError] = Field(default_factory=list, description="Detailed list of row-level errors")
+    can_import: bool = Field(..., description="True if error_rows is 0 and valid_rows > 0")
+    preview_records: List[Dict[str, Any]] = Field(default_factory=list, description="Preview of parsed valid records (up to 10)")
+
+
+class CSVImportResultResponse(BaseModel):
+    """Final response payload after executing bulk import into Elasticsearch."""
+    success: bool = Field(..., description="True if all records were successfully imported")
+    imported_count: int = Field(..., description="Number of records newly created in Elasticsearch")
+    total_rows: int = Field(..., description="Total data rows processed from the CSV file")
+    imported_ids: List[str] = Field(default_factory=list, description="List of imported artifact IDs")
+    message: str = Field(..., description="Summary status message")
+    errors: List[CSVRowError] = Field(default_factory=list, description="Any errors or conflicts encountered")

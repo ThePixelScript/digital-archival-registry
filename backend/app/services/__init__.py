@@ -2,11 +2,15 @@
 
 from app.services.artifact_service import (
     CSV_COLUMNS,
+    CSV_REQUIRED_COLUMNS,
+    MAX_IMPORT_FILE_SIZE_BYTES,
+    MAX_IMPORT_ROW_COUNT,
     ArtifactAlreadyExistsError,
     ArtifactNotFoundError,
     ElasticsearchServiceError,
     create_artifact,
     delete_artifact,
+    execute_csv_import,
     get_artifact_by_id,
     get_collection_stats,
     get_health_status,
@@ -14,7 +18,9 @@ from app.services.artifact_service import (
     sanitize_csv_value,
     search_artifacts,
     stream_artifacts_csv,
+    unescape_csv_value,
     update_artifact,
+    validate_csv_import,
 )
 
 __all__ = [
@@ -26,7 +32,13 @@ __all__ = [
     "search_artifacts",
     "stream_artifacts_csv",
     "CSV_COLUMNS",
+    "CSV_REQUIRED_COLUMNS",
+    "MAX_IMPORT_FILE_SIZE_BYTES",
+    "MAX_IMPORT_ROW_COUNT",
     "sanitize_csv_value",
+    "unescape_csv_value",
+    "validate_csv_import",
+    "execute_csv_import",
     "create_artifact",
     "update_artifact",
     "delete_artifact",
