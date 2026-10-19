@@ -11,6 +11,7 @@ Safe and idempotent to rerun:
 
 import base64
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -21,11 +22,20 @@ from typing import Any, Dict, List, Optional, Tuple
 class ElasticsearchAdminClient:
     """Lightweight REST client for Elasticsearch administrative operations."""
 
-    def __init__(self, base_url: str, username: str, password: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.username = username
-        auth_bytes = f"{username}:{password}".encode("utf-8")
-        self._auth_header = f"Basic {base64.b64encode(auth_bytes).decode('ascii')}"
+        if api_key and api_key.strip():
+            self._auth_header = f"ApiKey {api_key.strip()}"
+        else:
+            auth_bytes = f"{username or ''}:{password or ''}".encode("utf-8")
+            self._auth_header = f"Basic {base64.b64encode(auth_bytes).decode('ascii')}"
 
     def request(
         self,
@@ -67,18 +77,22 @@ class ElasticsearchAdminClient:
             return status, payload
 
 
-def load_environment_config(env_path: Path) -> Dict[str, str]:
-    """Safely loads key-value pairs from .env without shell interpolation or leaks."""
-    if not env_path.exists():
-        raise FileNotFoundError(f"Configuration file not found: {env_path}")
+def load_environment_config(env_path: Optional[Path] = None) -> Dict[str, str]:
+    """Safely loads key-value pairs from .env and overlays environment variables.
 
-    config = {}
-    with open(env_path, "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                config[key.strip()] = val.strip().strip('"').strip("'")
+    If .env is missing, falls back cleanly to process environment variables.
+    """
+    config: Dict[str, str] = {}
+    if env_path and env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    config[key.strip()] = val.strip().strip('"').strip("'")
+
+    for key, val in os.environ.items():
+        config[key] = val
     return config
 
 
@@ -218,17 +232,25 @@ def main() -> int:
         print(f"[FAIL] Error reading environment configuration: {ex}")
         return 1
 
-    host = config.get("ELASTICSEARCH_HOST", "127.0.0.1")
-    port = config.get("ELASTICSEARCH_PORT", "9200")
-    scheme = config.get("ELASTICSEARCH_SCHEME", "http")
+    if config.get("ELASTICSEARCH_URL"):
+        base_url = config["ELASTICSEARCH_URL"].rstrip("/")
+    else:
+        host = config.get("ELASTICSEARCH_HOST", "127.0.0.1")
+        port = config.get("ELASTICSEARCH_PORT", "9200")
+        scheme = config.get("ELASTICSEARCH_SCHEME", "http")
+        base_url = f"{scheme}://{host}:{port}"
+
+    api_key = config.get("ELASTIC_API_KEY")
     user = config.get("ELASTIC_USER", "elastic")
     password = config.get("ELASTIC_PASSWORD", "")
     index_name = config.get("ELASTICSEARCH_INDEX", "museum_artifacts")
 
-    base_url = f"{scheme}://{host}:{port}"
-    print(f"[INFO] Connecting to {base_url} as user '{user}' (Target index: '{index_name}')...")
-
-    client = ElasticsearchAdminClient(base_url, user, password)
+    if api_key and api_key.strip():
+        print(f"[INFO] Connecting to {base_url} using API key authentication (Target index: '{index_name}')...")
+        client = ElasticsearchAdminClient(base_url, api_key=api_key.strip())
+    else:
+        print(f"[INFO] Connecting to {base_url} as user '{user}' (Target index: '{index_name}')...")
+        client = ElasticsearchAdminClient(base_url, username=user, password=password)
 
     # 1. Cluster Readiness
     if not check_cluster_readiness(client):

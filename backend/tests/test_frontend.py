@@ -3,13 +3,17 @@
 from fastapi.testclient import TestClient
 
 
-def test_root_contains_frontend_url(client: TestClient) -> None:
-    """Verifies that the root API metadata endpoint links to the mounted frontend application."""
-    response = client.get("/")
-    assert response.status_code == 200
-    data = response.json()
-    assert "frontend_url" in data
-    assert data["frontend_url"] == "/app/"
+def test_root_redirects_to_frontend(client: TestClient) -> None:
+    """Verifies that the root endpoint redirects to the mounted frontend application."""
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers.get("location") == "/app/"
+
+    # Verify that following redirects leads to the 200 OK frontend entry point
+    follow_response = client.get("/", follow_redirects=True)
+    assert follow_response.status_code == 200
+    assert "text/html" in follow_response.headers.get("content-type", "")
+    assert "Digital Archival Registry" in follow_response.text
 
 
 def test_frontend_index_html_served(client: TestClient) -> None:

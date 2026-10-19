@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from app.api.routes import api_router
 from app.core.config import settings
@@ -64,14 +64,7 @@ def favicon() -> Response:
     return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "Not found"})
 
 
-@app.get("/", tags=["Root"], summary="Root endpoint providing API information")
-def root_info() -> dict:
-    """Returns application name, version, and documentation links."""
-    return {
-        "name": "Digital Archival Registry & Museum Collection Tracker API",
-        "version": "0.1.0",
-        "environment": settings.ENVIRONMENT,
-        "docs_url": "/docs",
-        "health_url": "/api/health",
-        "frontend_url": "/app/",
-    }
+@app.get("/", tags=["Root"], summary="Redirect root to frontend application", include_in_schema=False)
+def root_redirect() -> RedirectResponse:
+    """Redirects the root route to the frontend application at /app/."""
+    return RedirectResponse(url="/app/", status_code=status.HTTP_307_TEMPORARY_REDIRECT)

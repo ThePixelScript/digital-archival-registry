@@ -11,7 +11,7 @@
 // 1. Configuration and Global State
 // =============================================================================
 
-const API_BASE_URL = window.location.origin.includes(":8000")
+const API_BASE_URL = (window.location.protocol === "http:" || window.location.protocol === "https:")
   ? `${window.location.origin}/api`
   : "http://127.0.0.1:8000/api";
 
@@ -1540,6 +1540,7 @@ function attachEventListeners() {
   };
 
   document.getElementById("btn-reset-filters").addEventListener("click", resetAllFilters);
+  document.getElementById("btn-empty-reset")?.addEventListener("click", resetAllFilters);
   const retryAll = async () => {
     await checkSystemHealth();
     await fetchStats();

@@ -62,6 +62,11 @@
   padding: 0;
 }
 
+/* Enforce HTML5 hidden attribute precedence over specific display rules */
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--color-bg-canvas);

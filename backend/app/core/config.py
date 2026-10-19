@@ -1,7 +1,7 @@
 """Application configuration module using Pydantic Settings."""
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -40,16 +40,20 @@ class Settings(BaseSettings):
     )
 
     # Elasticsearch Connection
+    ELASTICSEARCH_URL: Optional[str] = Field(default=None, description="Complete Elasticsearch URL (overrides host/port/scheme if set)")
     ELASTICSEARCH_HOST: str = Field(default="127.0.0.1", description="Elasticsearch hostname or IP")
     ELASTICSEARCH_PORT: int = Field(default=9200, description="Elasticsearch port")
     ELASTICSEARCH_SCHEME: str = Field(default="http", description="HTTP or HTTPS")
     ELASTIC_USER: str = Field(default="elastic", description="Elasticsearch username")
     ELASTIC_PASSWORD: str = Field(default="", description="Elasticsearch password")
+    ELASTIC_API_KEY: Optional[str] = Field(default=None, description="Elasticsearch API key for Serverless/Cloud authentication")
     ELASTICSEARCH_INDEX: str = Field(default="museum_artifacts", description="Primary index name")
 
     @property
     def elasticsearch_url(self) -> str:
         """Constructs the base URL for Elasticsearch connection."""
+        if self.ELASTICSEARCH_URL and self.ELASTICSEARCH_URL.strip():
+            return self.ELASTICSEARCH_URL.strip().rstrip("/")
         return f"{self.ELASTICSEARCH_SCHEME}://{self.ELASTICSEARCH_HOST}:{self.ELASTICSEARCH_PORT}"
 
 

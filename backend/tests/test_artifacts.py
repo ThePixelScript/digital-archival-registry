@@ -78,46 +78,49 @@ def test_artifact_crud_lifecycle(client: TestClient) -> None:
         "tags": ["test", "bronze", "dagger", "integration"],
     }
 
-    # 1. Create artifact (POST)
-    create_resp = client.post("/api/artifacts", json=new_artifact)
-    assert create_resp.status_code == 201, f"Create failed: {create_resp.text}"
-    created_data = create_resp.json()
-    assert created_data["artifact_id"] == test_id
-    assert created_data["name"] == new_artifact["name"]
-    assert "created_at" in created_data
+    try:
+        # 1. Create artifact (POST)
+        create_resp = client.post("/api/artifacts", json=new_artifact)
+        assert create_resp.status_code == 201, f"Create failed: {create_resp.text}"
+        created_data = create_resp.json()
+        assert created_data["artifact_id"] == test_id
+        assert created_data["name"] == new_artifact["name"]
+        assert "created_at" in created_data
 
-    # 2. Duplicate prevention (POST again -> 409 Conflict)
-    dup_resp = client.post("/api/artifacts", json=new_artifact)
-    assert dup_resp.status_code == 409
-    assert "already exists" in dup_resp.json()["detail"].lower()
+        # 2. Duplicate prevention (POST again -> 409 Conflict)
+        dup_resp = client.post("/api/artifacts", json=new_artifact)
+        assert dup_resp.status_code == 409
+        assert "already exists" in dup_resp.json()["detail"].lower()
 
-    # 3. Retrieve created artifact (GET)
-    get_resp = client.get(f"/api/artifacts/{test_id}")
-    assert get_resp.status_code == 200
-    assert get_resp.json()["artifact_id"] == test_id
+        # 3. Retrieve created artifact (GET)
+        get_resp = client.get(f"/api/artifacts/{test_id}")
+        assert get_resp.status_code == 200
+        assert get_resp.json()["artifact_id"] == test_id
 
-    # 4. Update artifact (PUT)
-    update_payload = {
-        "estimated_value_usd": 175000.0,
-        "condition": "Pristine",
-        "is_on_display": True,
-    }
-    update_resp = client.put(f"/api/artifacts/{test_id}", json=update_payload)
-    assert update_resp.status_code == 200
-    updated_data = update_resp.json()
-    assert updated_data["estimated_value_usd"] == 175000.0
-    assert updated_data["condition"] == "Pristine"
-    assert updated_data["is_on_display"] is True
-    # Verify unchanged field is preserved
-    assert updated_data["name"] == new_artifact["name"]
+        # 4. Update artifact (PUT)
+        update_payload = {
+            "estimated_value_usd": 175000.0,
+            "condition": "Pristine",
+            "is_on_display": True,
+        }
+        update_resp = client.put(f"/api/artifacts/{test_id}", json=update_payload)
+        assert update_resp.status_code == 200
+        updated_data = update_resp.json()
+        assert updated_data["estimated_value_usd"] == 175000.0
+        assert updated_data["condition"] == "Pristine"
+        assert updated_data["is_on_display"] is True
+        # Verify unchanged field is preserved
+        assert updated_data["name"] == new_artifact["name"]
 
-    # 5. Delete artifact (DELETE)
-    del_resp = client.delete(f"/api/artifacts/{test_id}")
-    assert del_resp.status_code == 204
+        # 5. Delete artifact (DELETE)
+        del_resp = client.delete(f"/api/artifacts/{test_id}")
+        assert del_resp.status_code == 204
 
-    # 6. Verify deleted artifact returns 404
-    get_after_del = client.get(f"/api/artifacts/{test_id}")
-    assert get_after_del.status_code == 404
+        # 6. Verify deleted artifact returns 404
+        get_after_del = client.get(f"/api/artifacts/{test_id}")
+        assert get_after_del.status_code == 404
+    finally:
+        client.delete(f"/api/artifacts/{test_id}")
 
 
 def test_create_artifact_validation_rejection(client: TestClient) -> None:
