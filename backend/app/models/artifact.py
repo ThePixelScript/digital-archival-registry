@@ -136,10 +136,20 @@ class CollectionStatsResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health status representation for monitoring service uptime."""
-    status: str
-    environment: str
-    elasticsearch: Dict[str, Any]
+    """Health status representation for monitoring service uptime.
+
+    The 'elasticsearch' dictionary contains:
+    - connected (bool): True if Elasticsearch is reachable and responsive via root info (GET /).
+    - cluster_name (Optional[str]): Name of the connected cluster or Serverless project.
+    - cluster_status (Optional[str]): Cluster health color ('green', 'yellow', 'red') when available
+      (e.g., standard/local Elasticsearch); None for Serverless where /_cluster/health is unsupported.
+    - number_of_nodes (Optional[int]): Node count when available; None for Serverless.
+    - index_name (str): Configured primary index name.
+    - document_count (int): Searchable document count in the primary index.
+    """
+    status: str = Field(..., description="Overall service status ('ok' or 'degraded')")
+    environment: str = Field(..., description="Active runtime environment")
+    elasticsearch: Dict[str, Any] = Field(..., description="Elasticsearch connectivity and metadata")
 
 
 class CSVRowError(BaseModel):

@@ -10,9 +10,11 @@ Safe and idempotent to rerun:
 """
 
 import base64
+import copy
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -65,7 +67,13 @@ class ElasticsearchAdminClient:
         try:
             with urllib.request.urlopen(req, timeout=15) as response:
                 status = response.status
-                payload = json.loads(response.read().decode("utf-8"))
+                raw = response.read().decode("utf-8")
+                if not raw:
+                    return status, {}
+                try:
+                    payload = json.loads(raw)
+                except Exception:
+                    payload = {"raw_response": raw}
                 return status, payload
         except urllib.error.HTTPError as err:
             status = err.code
@@ -75,6 +83,21 @@ class ElasticsearchAdminClient:
             except Exception:
                 payload = {"raw_error": err_body}
             return status, payload
+        except urllib.error.URLError as err:
+            return 0, {"error": str(err.reason)}
+        except Exception as err:
+            return 0, {"error": str(err)}
+
+    def ping(self) -> bool:
+        """Verifies connectivity to Elasticsearch via root endpoint (GET /).
+
+        Supported across Elasticsearch Serverless, Elastic Cloud, and self-managed clusters.
+        """
+        try:
+            status, _ = self.request("GET", "/")
+            return status == 200
+        except Exception:
+            return False
 
 
 def load_environment_config(env_path: Optional[Path] = None) -> Dict[str, str]:
@@ -96,18 +119,37 @@ def load_environment_config(env_path: Optional[Path] = None) -> Dict[str, str]:
     return config
 
 
-def check_cluster_readiness(client: ElasticsearchAdminClient) -> bool:
-    """Verifies that the target Elasticsearch cluster is reachable and healthy."""
-    status, payload = client.request("GET", "/_cluster/health")
+def check_connectivity(client: ElasticsearchAdminClient) -> bool:
+    """Verifies that the target Elasticsearch instance is reachable and responsive.
+
+    Uses root endpoint GET / to support Elastic Cloud Serverless (where /_cluster/health
+    returns HTTP 410) as well as self-managed and local development clusters.
+    """
+    status, payload = client.request("GET", "/")
     if status != 200:
-        print(f"[FAIL] Cluster health request failed with HTTP {status}: {payload}")
+        error_msg = payload.get("error", payload.get("raw_error", payload))
+        print(f"[FAIL] Elasticsearch connectivity check failed with HTTP {status}: {error_msg}")
         return False
 
-    cluster_status = payload.get("status")
-    cluster_name = payload.get("cluster_name")
-    nodes = payload.get("number_of_nodes")
-    print(f"[OK] Cluster '{cluster_name}' is reachable. Health: {cluster_status} (nodes: {nodes})")
+    cluster_name = payload.get("cluster_name", "elasticsearch")
+    version_info = payload.get("version", {}).get("number", "serverless")
+    print(f"[OK] Elasticsearch is reachable and responsive (cluster: '{cluster_name}', version: {version_info}).")
     return True
+
+
+# Backward-compatible alias for existing callers
+check_cluster_readiness = check_connectivity
+
+
+def is_serverless_shard_replica_rejection(status: int, payload: Dict[str, Any]) -> bool:
+    """Detects whether index creation failed specifically because Serverless rejects shard/replica settings."""
+    if status != 400:
+        return False
+
+    error_text = json.dumps(payload).lower()
+    has_serverless = "serverless" in error_text
+    has_shard_or_replica = "number_of_shards" in error_text or "number_of_replicas" in error_text
+    return has_serverless and has_shard_or_replica
 
 
 def ensure_index_exists(
@@ -134,9 +176,30 @@ def ensure_index_exists(
     if put_status in (200, 201) and put_payload.get("acknowledged"):
         print(f"[OK] Successfully created index '{index_name}' with explicit mappings and analyzers.")
         return True
-    else:
-        print(f"[FAIL] Failed to create index '{index_name}' (HTTP {put_status}): {put_payload}")
-        return False
+
+    # Serverless compatibility retry: if Serverless rejects number_of_shards/number_of_replicas
+    if is_serverless_shard_replica_rejection(put_status, put_payload):
+        print(
+            f"[INFO] Serverless mode detected: removing unsupported shard/replica settings and retrying creation..."
+        )
+        serverless_mapping = copy.deepcopy(mapping_def)
+        if "settings" in serverless_mapping and isinstance(serverless_mapping["settings"], dict):
+            serverless_mapping["settings"].pop("number_of_shards", None)
+            serverless_mapping["settings"].pop("number_of_replicas", None)
+            if "index" in serverless_mapping["settings"] and isinstance(serverless_mapping["settings"]["index"], dict):
+                serverless_mapping["settings"]["index"].pop("number_of_shards", None)
+                serverless_mapping["settings"]["index"].pop("number_of_replicas", None)
+
+        retry_status, retry_payload = client.request("PUT", f"/{index_name}", body=serverless_mapping)
+        if retry_status in (200, 201) and retry_payload.get("acknowledged"):
+            print(f"[OK] Successfully created index '{index_name}' in Serverless mode with mappings and analyzers.")
+            return True
+        else:
+            print(f"[FAIL] Serverless index creation retry failed (HTTP {retry_status}): {retry_payload}")
+            return False
+
+    print(f"[FAIL] Failed to create index '{index_name}' (HTTP {put_status}): {put_payload}")
+    return False
 
 
 def seed_sample_data(
@@ -201,10 +264,43 @@ def seed_sample_data(
             reason = error_info.get("reason", "Unknown reason")
             print(f"  [ERROR] Document {doc_id} failed (status {res_status}): {reason}")
 
-    # Explicitly refresh the index to make new documents immediately searchable
-    client.request("POST", f"/{index_name}/_refresh")
+    # Attempt an explicit refresh if permitted, but do not require it
+    refresh_status, _ = client.request("POST", f"/{index_name}/_refresh")
+    if refresh_status not in (200, 201):
+        print(f"[INFO] Explicit refresh returned HTTP {refresh_status}; relying on periodic refresh polling.")
 
     return created_count, skipped_count, failed_count
+
+
+def poll_for_document_count(
+    client: ElasticsearchAdminClient,
+    index_name: str,
+    expected_count: int,
+    timeout_seconds: float = 15.0,
+    poll_interval: float = 1.0,
+) -> int:
+    """Polls the count endpoint until at least expected_count documents are searchable or timeout expires.
+
+    Enables least-privileged API keys to initialize successfully without requiring explicit
+    refresh privileges in Elastic Cloud Serverless.
+    """
+    deadline = time.time() + timeout_seconds
+    latest_count = -1
+
+    while True:
+        status, payload = client.request("GET", f"/{index_name}/_count")
+        if status == 200:
+            latest_count = payload.get("count", 0)
+            if latest_count >= expected_count:
+                return latest_count
+
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+
+        time.sleep(min(poll_interval, remaining))
+
+    return latest_count
 
 
 def verify_total_count(client: ElasticsearchAdminClient, index_name: str) -> int:
@@ -252,8 +348,8 @@ def main() -> int:
         print(f"[INFO] Connecting to {base_url} as user '{user}' (Target index: '{index_name}')...")
         client = ElasticsearchAdminClient(base_url, username=user, password=password)
 
-    # 1. Cluster Readiness
-    if not check_cluster_readiness(client):
+    # 1. Connectivity Check
+    if not check_connectivity(client):
         return 1
 
     # 2. Ensure Index Exists
@@ -271,8 +367,36 @@ def main() -> int:
         print("[FAIL] One or more documents failed to index.")
         return 1
 
-    # 4. Total Document Count Verification
-    total_docs = verify_total_count(client, index_name)
+    # Determine expected minimum documents based on sample data
+    with open(sample_data_file, "r", encoding="utf-8") as f:
+        sample_records: List[Dict[str, Any]] = json.load(f)
+    expected_count = len(sample_records)
+
+    # 4. Total Document Count Verification with Bounded Polling
+    print(f"[INFO] Verifying searchable document count (expected at least {expected_count})...")
+    total_docs = poll_for_document_count(
+        client,
+        index_name,
+        expected_count=expected_count,
+        timeout_seconds=15.0,
+    )
+
+    if total_docs < expected_count:
+        print(
+            f"[FAIL] Document count verification timed out: found {total_docs} searchable documents, "
+            f"expected at least {expected_count}."
+        )
+        return 1
+
+    # 5. Spot-check sample record accessibility
+    if sample_records:
+        first_id = sample_records[0].get("artifact_id", "art-001")
+        doc_status, _ = client.request("GET", f"/{index_name}/_doc/{first_id}")
+        if doc_status != 200:
+            print(f"[FAIL] Spot-check verification failed for document '{first_id}' (HTTP {doc_status}).")
+            return 1
+        print(f"[OK] Spot-checked document '{first_id}' confirmed accessible.")
+
     print(f"[OK] Total active documents in '{index_name}': {total_docs}")
 
     print("=" * 70)

@@ -635,17 +635,42 @@ def get_collection_stats(client: Elasticsearch) -> Dict[str, Any]:
 
 
 def get_health_status(client: Elasticsearch) -> Dict[str, Any]:
-    """Gathers cluster health and active index metadata without exposing sensitive credentials."""
+    """Gathers cluster health and active index metadata without exposing sensitive credentials.
+
+    Compatible with both standard Elasticsearch clusters and Elastic Cloud Serverless.
+    Base connectivity is established via client.info() (GET /) and index metrics via client.count().
+    Cluster health attributes (cluster_status, number_of_nodes) are populated when available
+    (e.g., local development), but omitted/None in Serverless where /_cluster/health returns HTTP 410.
+    """
     try:
-        health = client.cluster.health()
-        count_res = client.count(index=settings.ELASTICSEARCH_INDEX)
-        doc_count = count_res.get("count", 0)
+        # 1. Base connectivity and cluster metadata check (supported across Serverless, Cloud, and local)
+        info = client.info()
+        cluster_name = info.get("cluster_name")
+
+        # 2. Document count check for primary index
+        doc_count = 0
+        try:
+            count_res = client.count(index=settings.ELASTICSEARCH_INDEX)
+            doc_count = count_res.get("count", 0)
+        except Exception:
+            pass
+
+        # 3. Optional cluster health status (supported locally; Serverless returns HTTP 410)
+        cluster_status = None
+        number_of_nodes = None
+        try:
+            health = client.cluster.health()
+            cluster_status = health.get("status")
+            number_of_nodes = health.get("number_of_nodes")
+        except Exception:
+            # Leave cluster_status as None on Serverless or when cluster-health API is unavailable
+            pass
 
         return {
             "connected": True,
-            "cluster_name": health.get("cluster_name"),
-            "cluster_status": health.get("status"),
-            "number_of_nodes": health.get("number_of_nodes"),
+            "cluster_name": cluster_name,
+            "cluster_status": cluster_status,
+            "number_of_nodes": number_of_nodes,
             "index_name": settings.ELASTICSEARCH_INDEX,
             "document_count": doc_count,
         }
